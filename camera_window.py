@@ -58,6 +58,7 @@ from detection import (
     YoloDetectionWorker,
     load_yolo_model,
 )
+from is_focous import get_anti_noise_clarity_index
 
 
 class CameraWindow(QMainWindow):
@@ -93,7 +94,9 @@ class CameraWindow(QMainWindow):
 
         self.focus_raw_dir = self.capture_dir / "focus_raw"
         self.focus_raw_dir.mkdir(parents=True, exist_ok=True)
-        self.sharpness_threshold = 150.0
+        self.sharpness_threshold = 30000.0
+        self.current_sharpness: int = 0
+        self.latest_frame: Frame = None
 
         # 性能优化：异步保存和计算
         self.save_queue = queue.Queue()  # 图像保存队列
@@ -247,6 +250,42 @@ class CameraWindow(QMainWindow):
         self.resolution_combo.setMinimumWidth(220)
         self.resolution_combo.currentIndexChanged.connect(self._handle_resolution_combo)
         stats_layout.addWidget(self.resolution_combo)
+
+        # 清晰度显示
+        self.sharpness_label = QLabel("清晰度：--")
+        self.sharpness_label.setStyleSheet("color:#263238; font-size:25px; font-weight:600;")
+        stats_layout.addWidget(self.sharpness_label)
+
+        # 清晰度阈值设置
+        threshold_label = QLabel("阈值：")
+        threshold_label.setStyleSheet("color:#263238; font-size:25px;")
+        stats_layout.addWidget(threshold_label)
+
+        self.sharpness_threshold_spin = QSpinBox()
+        self.sharpness_threshold_spin.setRange(10000, 200000)
+        self.sharpness_threshold_spin.setValue(int(self.sharpness_threshold))
+        self.sharpness_threshold_spin.setMinimumWidth(100)
+        self.sharpness_threshold_spin.setStyleSheet("font-size:20px;")
+        self.sharpness_threshold_spin.setSingleStep(5000)
+        self.sharpness_threshold_spin.valueChanged.connect(self._on_sharpness_threshold_changed)
+        stats_layout.addWidget(self.sharpness_threshold_spin)
+
+        # 对焦状态指示
+        self.focus_status_label = QLabel("对焦状态：等待")
+        self.focus_status_label.setStyleSheet(
+            "color:#263238; font-size:25px; font-weight:600; padding:4px 12px; "
+            "background-color:#e0e0e0; border-radius:4px;"
+        )
+        stats_layout.addWidget(self.focus_status_label)
+
+        # 对焦检测按钮
+        self.check_focus_btn = QPushButton("检测对焦")
+        self.check_focus_btn.setStyleSheet(
+            "font-size:20px; padding:8px 20px; background-color:#2196f3; color:white; "
+            "border-radius:4px; border:none;"
+        )
+        self.check_focus_btn.clicked.connect(self._on_check_focus_clicked)
+        stats_layout.addWidget(self.check_focus_btn)
 
         camera_layout.addWidget(stats_widget)
 
@@ -2116,6 +2155,9 @@ class CameraWindow(QMainWindow):
         self.live_resolution = {"width": frame.width, "height": frame.height}
         self._update_live_info()
 
+        # 保存最新帧供对焦检测按钮使用
+        self.latest_frame = frame
+
         pixmap = self._frame_to_pixmap(frame)
         # 使用标签的实际尺寸进行缩放，确保画面填满显示区域且不产生黑边
         label_size = self.image_label.size()  # 使用标签的实际尺寸
@@ -2164,6 +2206,61 @@ class CameraWindow(QMainWindow):
         painter.end()
         return pixmap
 
+    # ------------------------------------------------------------------
+    # 清晰度检测
+    # ------------------------------------------------------------------
+    def _calculate_sharpness(self, frame: Frame) -> None:
+        """计算当前帧的清晰度并更新界面显示"""
+        try:
+            # 将 frame.data (bytes) 转换为 numpy 数组 (RGB格式)
+            img = numpy.frombuffer(frame.data, dtype=numpy.uint8)
+            img = img.reshape((frame.height, frame.width, 3))
+            img_rgb = numpy.ascontiguousarray(img)
+
+            # 使用JPEG编码大小法计算清晰度
+            # 先编码为JPEG获取文件大小
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 85]
+            _, encodings = cv2.imencode('.jpg', img_rgb, encode_param)
+            jpeg_size = len(encodings.tobytes())
+
+            # 使用抗噪声权重调整清晰度
+            self.current_sharpness = get_anti_noise_clarity_index(img_rgb, jpeg_size)
+
+            # 更新清晰度显示
+            self.sharpness_label.setText(f"清晰度：{self.current_sharpness}")
+
+            # 更新对焦状态
+            if self.current_sharpness >= self.sharpness_threshold:
+                self.focus_status_label.setText("对焦状态：已清晰")
+                self.focus_status_label.setStyleSheet(
+                    "color:#ffffff; font-size:25px; font-weight:600; padding:4px 12px; "
+                    "background-color:#4caf50; border-radius:4px;"
+                )
+            else:
+                self.focus_status_label.setText("对焦状态：需要调焦")
+                self.focus_status_label.setStyleSheet(
+                    "color:#ffffff; font-size:25px; font-weight:600; padding:4px 12px; "
+                    "background-color:#f44336; border-radius:4px;"
+                )
+        except Exception as e:
+            self.logger.warning(f"清晰度计算失败: {e}")
+
+    def _on_sharpness_threshold_changed(self, value: int) -> None:
+        """清晰度阈值变化回调"""
+        self.sharpness_threshold = float(value)
+        self.logger.info(f"清晰度阈值已设置为: {value}")
+
+    def _on_check_focus_clicked(self) -> None:
+        """对焦检测按钮点击回调"""
+        if self.latest_frame is None:
+            self.focus_status_label.setText("对焦状态：无图像")
+            self.focus_status_label.setStyleSheet(
+                "color:#ffffff; font-size:25px; font-weight:600; padding:4px 12px; "
+                "background-color:#ff9800; border-radius:4px;"
+            )
+            return
+
+        self._calculate_sharpness(self.latest_frame)
 
     # ------------------------------------------------------------------
     # Resolution handling
