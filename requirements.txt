@@ -1,0 +1,7 @@
+PyQt5>=5.15
+pillow
+typing_extensions
+opencv-python>=4.5.0
+numpy>=1.19.0
+ultralytics>=8.0.0
+sahi>=0.11.14

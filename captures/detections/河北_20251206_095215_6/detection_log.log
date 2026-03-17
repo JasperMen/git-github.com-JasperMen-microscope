@@ -1,0 +1,8 @@
+2025-12-06 10:12:12,649 - INFO - 检测开始，输出目录: captures\detections\河北_20251206_095215_6
+2025-12-06 10:12:12,650 - INFO - 日志文件: captures\detections\河北_20251206_095215_6\detection_log.log
+2025-12-06 10:12:17,082 - INFO - img_r001_c004.jpg | 🍰 Sliced (40x) | Obj: 16 | 4.274s
+2025-12-06 10:12:19,241 - INFO - img_r001_c003.jpg | 🍰 Sliced (100x) | Obj: 12 | 1.814s
+2025-12-06 10:12:21,342 - INFO - img_r001_c002.jpg | 🍰 Sliced (100x) | Obj: 11 | 1.828s
+2025-12-06 10:12:23,270 - INFO - img_r001_c001.jpg | 🍰 Sliced (100x) | Obj: 10 | 1.677s
+2025-12-06 10:12:24,628 - INFO - 统计图已生成: captures\detections\河北_20251206_095215_6\pollen_pie.png, captures\detections\河北_20251206_095215_6\pollen_bar.png
+2025-12-06 10:12:25,165 - WARNING - 未安装 pandas/openpyxl，仅生成 CSV 统计文件: captures\detections\河北_20251206_095215_6\pollen_stats.csv
